@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lead Report</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <h1>Lead Report</h1>
+  <p>Find business leads, upload a catalog, and send them a pitch.</p>
+</header>
+
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flashes">
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <section class="cards">
+    <div class="card"><span class="card-label">Total Leads</span><span class="card-value">{{ stats.total }}</span></div>
+    <div class="card"><span class="card-label">Contacted</span><span class="card-value">{{ stats.contacted }}</span></div>
+    <div class="card"><span class="card-label">Emails Sent</span><span class="card-value">{{ stats.emails_sent }}</span></div>
+    <div class="card"><span class="card-label">Failed</span><span class="card-value">{{ stats.emails_failed }}</span></div>
+  </section>
+
+  <section class="panel integrations">
+    <h2>Integrations</h2>
+    <div class="integration">
+      <span class="dot {{ 'on' if search_connected else 'off' }}"></span>
+      <div>
+        <strong>Search API</strong>
+        <span class="status">{{ 'Connected' if search_connected else 'Not connected' }}</span>
+        <small>{{ search_engine }} &middot; key {{ search_account }}</small>
+      </div>
+    </div>
+    <div class="integration">
+      <span class="dot {{ 'on' if smtp_connected else 'off' }}"></span>
+      <div>
+        <strong>Send Mail (SMTP)</strong>
+        <span class="status">{{ 'Connected' if smtp_connected else 'Not connected' }}</span>
+        <small>{{ smtp_account }} &middot; {{ send_delay }}s delay between sends</small>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Lead Search</h2>
+    <form method="post" action="{{ url_for('run_search') }}" class="grid">
+      <label>Search keywords
+        <input type="text" name="keywords" placeholder="organic coffee wholesalers" required>
+      </label>
+      <label>Countries
+        <input type="text" name="countries" placeholder="USA, UK">
+      </label>
+      <label>Limit
+        <input type="number" name="limit" value="10" min="1" max="100">
+      </label>
+      <label class="wide">Seed URLs (optional)
+        <input type="text" name="seed_urls" placeholder="https://example.com, https://acme.co">
+      </label>
+      <button type="submit" class="primary">Search Leads</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Catalog Upload</h2>
+    <form method="post" action="{{ url_for('upload_catalog') }}" enctype="multipart/form-data" class="row">
+      <input type="file" name="catalog" accept="application/pdf">
+      <button type="submit">Upload PDF</button>
+    </form>
+    {% if catalog_filename %}
+      <p class="hint">Current catalog:
+        <a href="{{ url_for('uploaded_file', filename=catalog_filename) }}" target="_blank">{{ catalog_filename }}</a>
+      </p>
+    {% else %}
+      <p class="hint">No catalog uploaded yet — emails will be sent without an attachment.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Email Composer</h2>
+    <form method="post" action="{{ url_for('send_bulk') }}" class="grid">
+      <label class="wide">Email Subject
+        <input type="text" name="subject" value="{{ subject }}">
+      </label>
+      <label class="wide">HTML Template
+        <textarea name="template" rows="12">{{ template }}</textarea>
+      </label>
+      <p class="hint wide">Merge tags: <code>{{ '{{ownerName}}' }}</code>
+        <code>{{ '{{businessName}}' }}</code>
+        <code>{{ '{{whatsappNumber}}' }}</code>
+        <code>{{ '{{unsubscribeUrl}}' }}</code></p>
+      <button type="submit" formaction="{{ url_for('save_template') }}" class="secondary">Save Template</button>
+      <button type="submit" class="primary">Send Bulk Email</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Leads ({{ leads|length }})</h2>
+    <table id="leads-table">
+      <thead>
+        <tr>
+          <th>Business</th><th>Owner</th><th>Email</th><th>Phone</th>
+          <th>Country</th><th>Source</th><th>Score</th><th>Contacted</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lead in leads %}
+        <tr data-lead-id="{{ lead.id }}">
+          <td>{{ lead.business_name }}</td>
+          <td>{{ lead.owner_name }}</td>
+          <td>{{ lead.email }}</td>
+          <td>{{ lead.phone }}</td>
+          <td>{{ lead.country }}</td>
+          <td>{{ lead.source }}</td>
+          <td>{{ lead.score }}</td>
+          <td class="contacted">{{ 'Yes' if lead.contacted else 'No' }}</td>
+          <td class="actions">
+            <button class="send-btn" type="button">Send</button>
+            <button class="delete-btn" type="button">Delete</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="empty">No leads yet. Run a search above.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

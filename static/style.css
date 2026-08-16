@@ -1,0 +1,99 @@
+:root {
+  --bg: #f4f6fb;
+  --panel: #ffffff;
+  --border: #e2e6ef;
+  --text: #1f2430;
+  --muted: #6b7280;
+  --accent: #2f6df6;
+  --green: #16a34a;
+  --red: #dc2626;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  background: linear-gradient(135deg, #1f2937, #2f6df6);
+  color: #fff;
+  padding: 24px 32px;
+}
+.topbar h1 { margin: 0; font-size: 26px; }
+.topbar p { margin: 6px 0 0; opacity: .85; font-size: 14px; }
+
+main { max-width: 1200px; margin: 0 auto; padding: 24px 32px 64px; }
+
+.flashes { margin-bottom: 16px; }
+.flash {
+  padding: 12px 16px; border-radius: 8px; margin-bottom: 8px; font-size: 14px;
+  border: 1px solid transparent;
+}
+.flash.success { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+.flash.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px; display: flex; flex-direction: column; gap: 8px;
+}
+.card-label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+.card-value { font-size: 30px; font-weight: 700; }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px 24px; margin-bottom: 20px;
+}
+.panel h2 { margin: 0 0 16px; font-size: 18px; }
+
+.integrations { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.integrations h2 { grid-column: 1 / -1; }
+.integration { display: flex; align-items: flex-start; gap: 12px; }
+.integration small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.integration .status { margin-left: 8px; font-size: 13px; color: var(--green); }
+.dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 5px; }
+.dot.on { background: var(--green); box-shadow: 0 0 0 4px rgba(22,163,74,.15); }
+.dot.off { background: var(--red); box-shadow: 0 0 0 4px rgba(220,38,38,.12); }
+.integration .dot.off + div .status { color: var(--red); }
+
+form.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: end; }
+form.grid .wide { grid-column: 1 / -1; }
+form.row { display: flex; gap: 12px; align-items: center; }
+
+label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+input[type="text"], input[type="number"], textarea, input[type="file"] {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 14px; font-family: inherit; color: var(--text); background: #fff;
+}
+textarea { resize: vertical; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
+
+button {
+  padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border);
+  background: #fff; font-size: 14px; cursor: pointer;
+}
+button:hover { background: #f3f4f6; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: #2559d0; }
+button.secondary { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
+button:disabled { opacity: .6; cursor: not-allowed; }
+
+.hint { color: var(--muted); font-size: 13px; }
+.hint code { background: #eef2ff; padding: 2px 6px; border-radius: 4px; margin-right: 6px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+td.empty { text-align: center; color: var(--muted); padding: 24px; }
+td.actions { display: flex; gap: 8px; }
+td.actions button { padding: 6px 12px; font-size: 13px; }
+.delete-btn { color: var(--red); border-color: #fecaca; }
+
+@media (max-width: 900px) {
+  .cards { grid-template-columns: repeat(2, 1fr); }
+  form.grid { grid-template-columns: 1fr; }
+  .integrations { grid-template-columns: 1fr; }
+}
