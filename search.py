@@ -70,15 +70,23 @@ def split_list(raw: str) -> list[str]:
 
 
 def _serpapi_call(params: dict[str, Any]) -> dict[str, Any]:
-    if not config.SEARCH_API_KEY:
-        raise SearchError("SEARCH_API_KEY is not configured")
-    params = {**params, "api_key": config.SEARCH_API_KEY}
-    response = requests.get(SERPAPI_ENDPOINT, params=params, timeout=REQUEST_TIMEOUT)
+    if not config.SERPAPI_KEY:
+        raise SearchError("SERPAPI_KEY is not set in .env")
+    params = {**params, "api_key": config.SERPAPI_KEY}
+    try:
+        response = requests.get(
+            SERPAPI_ENDPOINT, params=params, timeout=REQUEST_TIMEOUT
+        )
+    except requests.RequestException as exc:
+        raise SearchError(f"could not reach SerpAPI ({exc})") from exc
     if response.status_code != 200:
         raise SearchError(
             f"SerpAPI returned HTTP {response.status_code}: {response.text[:200]}"
         )
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise SearchError("SerpAPI returned a non-JSON response") from exc
     if payload.get("error"):
         raise SearchError(str(payload["error"]))
     return payload

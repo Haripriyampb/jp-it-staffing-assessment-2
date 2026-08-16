@@ -1,39 +1,16 @@
+"""Lead + settings persistence backed by a CSV file and a JSON settings file."""
+
+import json
 import os
-import sqlite3
+from datetime import datetime, timezone
 from typing import Any
+
+import pandas as pd
 
 import config
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS leads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    business_name TEXT NOT NULL DEFAULT '',
-    owner_name TEXT NOT NULL DEFAULT '',
-    email TEXT NOT NULL DEFAULT '',
-    phone TEXT NOT NULL DEFAULT '',
-    country TEXT NOT NULL DEFAULT '',
-    source TEXT NOT NULL DEFAULT '',
-    website TEXT NOT NULL DEFAULT '',
-    score INTEGER NOT NULL DEFAULT 0,
-    contacted INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_email
-    ON leads(email) WHERE email <> '';
-
-CREATE TABLE IF NOT EXISTS counters (
-    name TEXT PRIMARY KEY,
-    value INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS settings (
-    name TEXT PRIMARY KEY,
-    value TEXT NOT NULL DEFAULT ''
-);
-"""
-
-LEAD_FIELDS = (
+COLUMNS = [
+    "id",
     "business_name",
     "owner_name",
     "email",
@@ -42,107 +19,153 @@ LEAD_FIELDS = (
     "source",
     "website",
     "score",
-)
+    "contacted",
+    "created_at",
+]
+
+DEFAULT_SETTINGS: dict[str, Any] = {
+    "catalog_filename": "",
+    "email_subject": "",
+    "email_template": "",
+    "emails_sent": 0,
+    "emails_failed": 0,
+}
 
 
-def connect() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(config.DATABASE_PATH), exist_ok=True)
-    conn = sqlite3.connect(config.DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _ensure_dirs() -> None:
+    os.makedirs(os.path.dirname(config.LEADS_CSV_PATH) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(config.SETTINGS_PATH) or ".", exist_ok=True)
 
 
-def init_db() -> None:
-    with connect() as conn:
-        conn.executescript(SCHEMA)
+def init_storage() -> None:
+    _ensure_dirs()
+    if not os.path.exists(config.LEADS_CSV_PATH):
+        pd.DataFrame(columns=COLUMNS).to_csv(config.LEADS_CSV_PATH, index=False)
+    if not os.path.exists(config.SETTINGS_PATH):
+        _write_settings(dict(DEFAULT_SETTINGS))
 
 
-def add_lead(lead: dict[str, Any]) -> bool:
-    """Insert a lead. Returns False when a lead with the same email already exists."""
-    values = {field: lead.get(field, "") for field in LEAD_FIELDS}
-    values["score"] = int(lead.get("score") or 0)
-    columns = ", ".join(LEAD_FIELDS)
-    placeholders = ", ".join(f":{field}" for field in LEAD_FIELDS)
-    with connect() as conn:
-        try:
-            conn.execute(
-                f"INSERT INTO leads ({columns}) VALUES ({placeholders})", values
-            )
-        except sqlite3.IntegrityError:
-            return False
-    return True
+def read_leads() -> pd.DataFrame:
+    init_storage()
+    frame = pd.read_csv(config.LEADS_CSV_PATH, dtype=str, keep_default_na=False)
+    for column in COLUMNS:
+        if column not in frame.columns:
+            frame[column] = ""
+    frame = frame[COLUMNS]
+    frame["id"] = pd.to_numeric(frame["id"], errors="coerce").fillna(0).astype(int)
+    frame["score"] = (
+        pd.to_numeric(frame["score"], errors="coerce").fillna(0).astype(int)
+    )
+    frame["contacted"] = frame["contacted"].isin(["Yes", "yes", "True", "true", "1"])
+    return frame
+
+
+def _write_leads(frame: pd.DataFrame) -> None:
+    out = frame.copy()
+    out["contacted"] = out["contacted"].map(lambda flag: "Yes" if flag else "No")
+    out[COLUMNS].to_csv(config.LEADS_CSV_PATH, index=False)
 
 
 def list_leads() -> list[dict[str, Any]]:
-    with connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM leads ORDER BY score DESC, id DESC"
-        ).fetchall()
-    return [dict(row) for row in rows]
+    frame = read_leads().sort_values(["score", "id"], ascending=[False, False])
+    return frame.to_dict("records")
 
 
 def get_lead(lead_id: int) -> dict[str, Any] | None:
-    with connect() as conn:
-        row = conn.execute("SELECT * FROM leads WHERE id = ?", (lead_id,)).fetchone()
-    return dict(row) if row else None
+    frame = read_leads()
+    match = frame[frame["id"] == lead_id]
+    return match.iloc[0].to_dict() if not match.empty else None
+
+
+def add_lead(lead: dict[str, Any]) -> bool:
+    """Append a lead. Returns False when a lead with the same email already exists."""
+    frame = read_leads()
+    email = (lead.get("email") or "").strip().lower()
+    if (
+        email
+        and not frame.empty
+        and (frame["email"].str.strip().str.lower() == email).any()
+    ):
+        return False
+
+    row = {
+        "id": int(frame["id"].max()) + 1 if not frame.empty else 1,
+        "business_name": lead.get("business_name", ""),
+        "owner_name": lead.get("owner_name", ""),
+        "email": lead.get("email", ""),
+        "phone": lead.get("phone", ""),
+        "country": lead.get("country", ""),
+        "source": lead.get("source", ""),
+        "website": lead.get("website", ""),
+        "score": int(lead.get("score") or 0),
+        "contacted": bool(lead.get("contacted", False)),
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    frame = pd.concat([frame, pd.DataFrame([row])], ignore_index=True)
+    _write_leads(frame)
+    return True
 
 
 def delete_lead(lead_id: int) -> bool:
-    with connect() as conn:
-        cursor = conn.execute("DELETE FROM leads WHERE id = ?", (lead_id,))
-    return cursor.rowcount > 0
+    frame = read_leads()
+    remaining = frame[frame["id"] != lead_id]
+    if len(remaining) == len(frame):
+        return False
+    _write_leads(remaining)
+    return True
 
 
 def mark_contacted(lead_id: int, contacted: bool = True) -> None:
-    with connect() as conn:
-        conn.execute(
-            "UPDATE leads SET contacted = ? WHERE id = ?",
-            (1 if contacted else 0, lead_id),
-        )
+    frame = read_leads()
+    frame.loc[frame["id"] == lead_id, "contacted"] = contacted
+    _write_leads(frame)
 
 
-def increment_counter(name: str, amount: int = 1) -> None:
-    with connect() as conn:
-        conn.execute(
-            "INSERT INTO counters (name, value) VALUES (?, ?) "
-            "ON CONFLICT(name) DO UPDATE SET value = value + excluded.value",
-            (name, amount),
-        )
+def _read_settings() -> dict[str, Any]:
+    init_storage()
+    try:
+        with open(config.SETTINGS_PATH, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (json.JSONDecodeError, OSError):
+        data = {}
+    return {**DEFAULT_SETTINGS, **data}
 
 
-def get_counter(name: str) -> int:
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT value FROM counters WHERE name = ?", (name,)
-        ).fetchone()
-    return int(row["value"]) if row else 0
-
-
-def set_setting(name: str, value: str) -> None:
-    with connect() as conn:
-        conn.execute(
-            "INSERT INTO settings (name, value) VALUES (?, ?) "
-            "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
-            (name, value),
-        )
+def _write_settings(settings: dict[str, Any]) -> None:
+    _ensure_dirs()
+    with open(config.SETTINGS_PATH, "w", encoding="utf-8") as handle:
+        json.dump(settings, handle, indent=2)
 
 
 def get_setting(name: str, default: str = "") -> str:
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE name = ?", (name,)
-        ).fetchone()
-    return row["value"] if row else default
+    value = _read_settings().get(name, default)
+    return default if value in ("", None) else str(value)
+
+
+def set_setting(name: str, value: str) -> None:
+    settings = _read_settings()
+    settings[name] = value
+    _write_settings(settings)
+
+
+def get_counter(name: str) -> int:
+    try:
+        return int(_read_settings().get(name, 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def increment_counter(name: str, amount: int = 1) -> None:
+    settings = _read_settings()
+    settings[name] = get_counter(name) + amount
+    _write_settings(settings)
 
 
 def stats() -> dict[str, int]:
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) AS total, COALESCE(SUM(contacted), 0) AS contacted FROM leads"
-        ).fetchone()
+    frame = read_leads()
     return {
-        "total": int(row["total"]),
-        "contacted": int(row["contacted"]),
+        "total": len(frame),
+        "contacted": int(frame["contacted"].sum()) if not frame.empty else 0,
         "emails_sent": get_counter("emails_sent"),
         "emails_failed": get_counter("emails_failed"),
     }

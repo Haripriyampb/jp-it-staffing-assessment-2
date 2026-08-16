@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .venv/
-data/*.db
+data/*.csv
+data/settings.json
 uploads/*
 !uploads/.gitkeep

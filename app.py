@@ -1,4 +1,5 @@
 import os
+import smtplib
 import time
 
 from flask import (
@@ -32,7 +33,7 @@ app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 
-store.init_db()
+store.init_storage()
 os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
 
 
@@ -54,7 +55,7 @@ def index():
         subject=store.get_setting("email_subject", DEFAULT_SUBJECT),
         template=store.get_setting("email_template", DEFAULT_TEMPLATE),
         search_connected=config.search_api_configured(),
-        search_account=config.masked(config.SEARCH_API_KEY) or "not configured",
+        search_account=config.masked(config.SERPAPI_KEY) or "not configured",
         search_engine=config.SEARCH_ENGINE,
         smtp_connected=config.smtp_configured(),
         smtp_account=config.SMTP_EMAIL or "not configured",
@@ -80,6 +81,12 @@ def run_search():
         leads = search.find_leads(keywords, countries, limit, seed_urls)
     except search.SearchError as exc:
         flash(f"Search failed: {exc}", "error")
+        return redirect(url_for("index"))
+
+    if not leads:
+        flash(
+            "Search returned no results. Try different keywords or countries.", "error"
+        )
         return redirect(url_for("index"))
 
     added = sum(1 for lead in leads if store.add_lead(lead))
@@ -125,7 +132,10 @@ def _send_to_leads(leads, subject, template):
     sent, failed, errors = 0, 0, []
     try:
         server = mailer.open_connection()
-    except (mailer.MailError, OSError) as exc:
+    except (mailer.MailError, OSError, smtplib.SMTPException) as exc:
+        app.logger.warning("SMTP connection failed: %s", exc)
+        for _ in leads:
+            store.increment_counter("emails_failed")
         return 0, len(leads), [str(exc)]
 
     try:
@@ -134,11 +144,13 @@ def _send_to_leads(leads, subject, template):
                 mailer.send_lead(server, lead, subject, template, catalog_path())
             except Exception as exc:  # noqa: BLE001 - one failure must not stop the run
                 failed += 1
-                errors.append(f"{lead.get('email') or lead.get('id')}: {exc}")
+                message = f"{lead.get('email') or lead.get('id')}: {exc}"
+                errors.append(message)
+                app.logger.warning("Send failed for %s", message)
                 store.increment_counter("emails_failed")
             else:
                 sent += 1
-                store.mark_contacted(lead["id"])
+                store.mark_contacted(int(lead["id"]))
                 store.increment_counter("emails_sent")
             if position < len(leads) - 1 and config.SEND_DELAY > 0:
                 time.sleep(config.SEND_DELAY)
@@ -158,11 +170,9 @@ def send_bulk():
     store.set_setting("email_subject", subject)
     store.set_setting("email_template", template)
 
-    leads = [
-        lead for lead in store.list_leads() if lead["email"] and not lead["contacted"]
-    ]
+    leads = [lead for lead in store.list_leads() if lead["email"]]
     if not leads:
-        flash("No uncontacted leads with an email address.", "error")
+        flash("No leads with an email address to send to.", "error")
         return redirect(url_for("index"))
 
     sent, failed, errors = _send_to_leads(leads, subject, template)
@@ -192,6 +202,19 @@ def delete_one(lead_id):
     if store.delete_lead(lead_id):
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "Lead not found"}), 404
+
+
+@app.errorhandler(413)
+def too_large(_error):
+    flash("That file is too large (25 MB max).", "error")
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(Exception)
+def unhandled_error(error):
+    app.logger.exception("Unhandled error", exc_info=error)
+    flash(f"Something went wrong: {error}", "error")
+    return redirect(url_for("index"))
 
 
 @app.get("/unsubscribe")

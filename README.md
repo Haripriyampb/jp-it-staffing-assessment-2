@@ -16,7 +16,7 @@ python app.py          # http://localhost:5000
 
 | Variable | Purpose |
 | --- | --- |
-| `SEARCH_API_KEY` | SerpAPI key |
+| `SERPAPI_KEY` | SerpAPI key |
 | `SEARCH_ENGINE` | `google_maps` (default), `google_local` or `google` |
 | `SEARCH_ENRICH_WEBSITES` | fetch each result's site to scrape email/phone/owner |
 | `SMTP_HOST` / `SMTP_PORT` | defaults to Gmail (`smtp.gmail.com:587`, STARTTLS) |
@@ -41,10 +41,11 @@ Lead score (0-100): 20 base, +40 email, +15 phone, +10 owner name, +10 website,
 
 ## Storage
 
-SQLite at `data/leads.db` (`DATABASE_PATH` overrides). Leads are deduplicated on
-a non-empty email address. Counters for emails sent/failed and the saved email
-subject/template/catalog filename live in the same database, so all state
-survives restarts.
+Leads live in `data/leads.csv`, read and written with pandas
+(`LEADS_CSV_PATH` overrides), deduplicated on a non-empty email address, with
+`contacted` stored as `Yes`/`No`. The email subject/template, current catalog
+filename and the emails sent/failed counters live in `data/settings.json`
+(`SETTINGS_PATH` overrides), so all state survives restarts.
 
 ## Email sending
 

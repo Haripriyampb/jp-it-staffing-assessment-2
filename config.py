@@ -6,7 +6,7 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-SEARCH_API_KEY = os.getenv("SEARCH_API_KEY", "")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY") or os.getenv("SEARCH_API_KEY", "")
 SEARCH_ENGINE = os.getenv("SEARCH_ENGINE", "google_maps")
 SEARCH_ENRICH_WEBSITES = os.getenv("SEARCH_ENRICH_WEBSITES", "true").lower() == "true"
 
@@ -21,13 +21,18 @@ UNSUBSCRIBE_BASE_URL = os.getenv(
     "UNSUBSCRIBE_BASE_URL", "http://localhost:5000/unsubscribe"
 )
 
-DATABASE_PATH = os.getenv("DATABASE_PATH", os.path.join(BASE_DIR, "data", "leads.db"))
+LEADS_CSV_PATH = os.getenv(
+    "LEADS_CSV_PATH", os.path.join(BASE_DIR, "data", "leads.csv")
+)
+SETTINGS_PATH = os.getenv(
+    "SETTINGS_PATH", os.path.join(BASE_DIR, "data", "settings.json")
+)
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", os.path.join(BASE_DIR, "uploads"))
 SECRET_KEY = os.getenv("SECRET_KEY", "lead-report-dev-secret")
 
 
 def search_api_configured() -> bool:
-    return bool(SEARCH_API_KEY)
+    return bool(SERPAPI_KEY)
 
 
 def smtp_configured() -> bool:
