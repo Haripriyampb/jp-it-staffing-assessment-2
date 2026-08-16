@@ -12,6 +12,7 @@ from flask import (
     send_from_directory,
     url_for,
 )
+from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
 import config
@@ -212,6 +213,8 @@ def too_large(_error):
 
 @app.errorhandler(Exception)
 def unhandled_error(error):
+    if isinstance(error, HTTPException):
+        return error
     app.logger.exception("Unhandled error", exc_info=error)
     flash(f"Something went wrong: {error}", "error")
     return redirect(url_for("index"))
