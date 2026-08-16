@@ -257,7 +257,8 @@ def find_leads(
         seen_websites.add(url)
 
     per_country = max(1, limit // max(1, len(countries) or 1))
-    for country in countries or [""]:
+    search_countries = (countries or [""]) if keywords else []
+    for country in search_countries:
         if len(leads) >= limit:
             break
         for lead in _search_country(keywords, country, per_country):
